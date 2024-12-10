@@ -111,14 +111,17 @@ def generate_network_html(G):
         return ""
 
 def main():
-    # Optional: Display PyVis version for debugging
+    # **1. Set Page Configuration FIRST**
+    st.set_page_config(page_title="📚 Educational Text Network Analysis App", layout="wide")
+
+    # **2. Optional: Display PyVis version for debugging**
     try:
         import pyvis
         st.sidebar.markdown(f"**PyVis Version:** {pyvis.__version__}")
     except ImportError:
         st.sidebar.markdown("**PyVis Version:** Not installed")
-    
-    st.set_page_config(page_title="📚 Educational Text Network Analysis App", layout="wide")
+
+    # **3. Title and Overview**
     st.title("📚 Educational Text Network Analysis App")
 
     st.markdown("""
@@ -126,6 +129,7 @@ def main():
     This application analyzes the co-occurrence of words in your text data and visualizes the relationships as a network graph. It provides various centrality metrics to help identify the most important or influential words based on different criteria. Customize the analysis by adjusting parameters and excluding stop words in multiple languages.
     """)
 
+    # **4. Sidebar: Data Upload**
     st.sidebar.header("📁 Upload Data")
     file_type = st.sidebar.selectbox("Select File Type", ["CSV", "TSV", "XLSX", "TXT"])
     uploaded_file = st.sidebar.file_uploader("Upload your file", type=["csv", "tsv", "xlsx", "txt"])
@@ -149,6 +153,7 @@ def main():
         st.info("📄 Awaiting file upload.")
         st.stop()
 
+    # **5. Sidebar: Configuration Settings**
     st.sidebar.header("🔧 Configuration Settings")
 
     min_df = st.sidebar.slider(
@@ -179,6 +184,7 @@ def main():
         help="Number of top words to include based on frequency."
     )
 
+    # **6. Sidebar: Stop Words Exclusion**
     st.sidebar.header("🛑 Stop Words Exclusion")
     languages = st.sidebar.multiselect(
         "Select Languages for Stop Words Exclusion",
@@ -190,6 +196,7 @@ def main():
     if not languages:
         st.sidebar.warning("⚠️ At least one language should be selected for stop words exclusion.")
 
+    # **7. Run Analysis Button**
     run_analysis = st.sidebar.button("🔄 Run Analysis")
 
     if run_analysis:
@@ -223,12 +230,14 @@ def main():
 
         st.success("✅ **Analysis Complete!**")
 
+        # **8. Display Centrality Metrics**
         st.header("🔍 Centrality Metrics")
         st.write("""
         The table below displays various centrality measures for each word in the network. Centrality metrics help identify the most important or influential words based on different criteria.
         """)
         st.dataframe(centrality_df)
 
+        # **9. Display Word Frequency**
         st.header("📈 Word Frequency")
         word_freq = pd.DataFrame({
             'word': list(word_counts.head(top_n).index),
@@ -236,6 +245,7 @@ def main():
         })
         st.bar_chart(word_freq.set_index('word')['count'])
 
+        # **10. Display Word Co-occurrence Network**
         st.header("🕸️ Word Co-occurrence Network")
         st.write("""
         The interactive network graph below visualizes the relationships between words based on their co-occurrence in the documents. Nodes represent words, and edges represent co-occurrences. Hover over a node to see its centrality metrics.
@@ -248,6 +258,7 @@ def main():
         except Exception as e:
             st.error(f"⚠️ Error displaying network graph: {e}")
 
+        # **11. Export Graph**
         st.header("📂 Export Graph")
         st.write("You can export the network graph in GEXF format for further analysis in tools like Gephi.")
         if st.button("⬇️ Download GEXF"):
