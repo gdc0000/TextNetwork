@@ -6,3 +6,4 @@ matplotlib
 pyvis
 openpyxl
 xlrd
+stop_words
