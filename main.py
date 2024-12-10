@@ -2,13 +2,10 @@ import streamlit as st
 import pandas as pd
 from sklearn.feature_extraction.text import CountVectorizer
 import networkx as nx
-import matplotlib.pyplot as plt
-from pyvis.network import Network
 from stop_words import get_stop_words
 import tempfile
 import os
 import numpy as np
-import sys
 
 def add_footer():
     st.markdown("---")
@@ -84,52 +81,19 @@ def assign_attributes(G, degree, betweenness, eigenvector, closeness):
     nx.set_node_attributes(G, eigenvector, 'eigenvector')
     nx.set_node_attributes(G, closeness, 'closeness')
 
-def generate_network_html(G):
-    net = Network(height='600px', width='100%', notebook=False, directed=False)
-    # Add nodes with centrality attributes
-    for node, data in G.nodes(data=True):
-        size = data.get('degree', 1) * 2  # Adjust size based on degree
-        title = (f"Word: {node}<br>"
-                 f"Degree: {data.get('degree', 0)}<br>"
-                 f"Betweenness: {data.get('betweenness', 0):.4f}<br>"
-                 f"Eigenvector: {data.get('eigenvector', 0):.4f}<br>"
-                 f"Closeness: {data.get('closeness', 0):.4f}")
-        net.add_node(node, label=node, size=size, title=title)
-    # Add edges
-    for edge in G.edges(data=True):
-        word1, word2, data = edge
-        weight = data.get('weight', 1)
-        net.add_edge(word1, word2, value=weight)
-    net.force_atlas_2based()
-    try:
-        # Attempt to use to_html()
-        html_content = net.to_html(full_html=False)
-        return html_content
-    except AttributeError:
-        # Fallback method using generate_html (if available)
-        st.error("PyVis 'to_html' method is not available. Please ensure you have pyvis version 0.6.1 or higher.")
-        return ""
-
 def main():
     # **1. Set Page Configuration FIRST**
     st.set_page_config(page_title="📚 Educational Text Network Analysis App", layout="wide")
 
-    # **2. Optional: Display PyVis version for debugging**
-    try:
-        import pyvis
-        st.sidebar.markdown(f"**PyVis Version:** {pyvis.__version__}")
-    except ImportError:
-        st.sidebar.markdown("**PyVis Version:** Not installed")
-
-    # **3. Title and Overview**
+    # **2. Title and Overview**
     st.title("📚 Educational Text Network Analysis App")
 
     st.markdown("""
     ### **Overview**
-    This application analyzes the co-occurrence of words in your text data and visualizes the relationships as a network graph. It provides various centrality metrics to help identify the most important or influential words based on different criteria. Customize the analysis by adjusting parameters and excluding stop words in multiple languages.
+    This application analyzes the co-occurrence of words in your text data and provides various centrality metrics to help identify the most important or influential words based on different criteria. Customize the analysis by adjusting parameters and excluding stop words in multiple languages.
     """)
 
-    # **4. Sidebar: Data Upload**
+    # **3. Sidebar: Data Upload**
     st.sidebar.header("📁 Upload Data")
     file_type = st.sidebar.selectbox("Select File Type", ["CSV", "TSV", "XLSX", "TXT"])
     uploaded_file = st.sidebar.file_uploader("Upload your file", type=["csv", "tsv", "xlsx", "txt"])
@@ -153,7 +117,7 @@ def main():
         st.info("📄 Awaiting file upload.")
         st.stop()
 
-    # **5. Sidebar: Configuration Settings**
+    # **4. Sidebar: Configuration Settings**
     st.sidebar.header("🔧 Configuration Settings")
 
     min_df = st.sidebar.slider(
@@ -184,7 +148,7 @@ def main():
         help="Number of top words to include based on frequency."
     )
 
-    # **6. Sidebar: Stop Words Exclusion**
+    # **5. Sidebar: Stop Words Exclusion**
     st.sidebar.header("🛑 Stop Words Exclusion")
     languages = st.sidebar.multiselect(
         "Select Languages for Stop Words Exclusion",
@@ -196,7 +160,7 @@ def main():
     if not languages:
         st.sidebar.warning("⚠️ At least one language should be selected for stop words exclusion.")
 
-    # **7. Run Analysis Button**
+    # **6. Run Analysis Button**
     run_analysis = st.sidebar.button("🔄 Run Analysis")
 
     if run_analysis:
@@ -225,58 +189,87 @@ def main():
                 'Closeness': list(closeness_dict.values())
             }).sort_values(by='Degree', ascending=False)
 
-            # Generate network HTML
-            network_html = generate_network_html(G)
+            # Generate Edgelist
+            edgelist = pd.DataFrame(
+                [(u, v, d['weight']) for u, v, d in G.edges(data=True)],
+                columns=['Source', 'Target', 'Weight']
+            )
+
+            # Generate Adjacency Matrix
+            adjacency_matrix = Adj.copy()
+
+            # Generate Gephi file (GEXF)
+            gexf_temp = tempfile.NamedTemporaryFile(delete=False, suffix='.gexf')
+            nx.write_gexf(G, gexf_temp.name)
+            gexf_temp.close()
 
         st.success("✅ **Analysis Complete!**")
 
-        # **8. Display Centrality Metrics**
+        # **7. Display Centrality Metrics**
         st.header("🔍 Centrality Metrics")
         st.write("""
         The table below displays various centrality measures for each word in the network. Centrality metrics help identify the most important or influential words based on different criteria.
         """)
         st.dataframe(centrality_df)
 
-        # **9. Display Word Frequency**
+        # **8. Display Word Frequency**
         st.header("📈 Word Frequency")
         word_freq = pd.DataFrame({
-            'word': list(word_counts.head(top_n).index),
-            'count': list(word_counts.head(top_n).values)
+            'Word': list(word_counts.head(top_n).index),
+            'Count': list(word_counts.head(top_n).values)
         })
-        st.bar_chart(word_freq.set_index('word')['count'])
+        st.bar_chart(word_freq.set_index('Word')['Count'])
 
-        # **10. Display Word Co-occurrence Network**
-        st.header("🕸️ Word Co-occurrence Network")
+        # **9. Downloadable Files**
+        st.header("📂 Downloadable Files")
         st.write("""
-        The interactive network graph below visualizes the relationships between words based on their co-occurrence in the documents. Nodes represent words, and edges represent co-occurrences. Hover over a node to see its centrality metrics.
+        You can download the following files for further analysis:
+        - **Adjacency Matrix**: Represents the co-occurrence of words.
+        - **Edgelist**: Represents the connections between words.
+        - **Gephi File (GEXF)**: For advanced network analysis in Gephi.
         """)
-        try:
-            if network_html:
-                st.components.v1.html(network_html, height=600, scrolling=True)
-            else:
-                st.error("⚠️ Failed to generate network visualization.")
-        except Exception as e:
-            st.error(f"⚠️ Error displaying network graph: {e}")
 
-        # **11. Export Graph**
-        st.header("📂 Export Graph")
-        st.write("You can export the network graph in GEXF format for further analysis in tools like Gephi.")
-        if st.button("⬇️ Download GEXF"):
-            try:
-                with tempfile.NamedTemporaryFile(delete=False, suffix='.gexf') as tmp_gexf:
-                    nx.write_gexf(G, tmp_gexf.name)
-                    tmp_gexf.close()
-                    with open(tmp_gexf.name, 'rb') as f:
-                        gexf_data = f.read()
-                    st.download_button(
-                        label="Download GEXF",
-                        data=gexf_data,
-                        file_name="Text_Network_Gephi_Results.gexf",
-                        mime="application/gexf+xml"
-                    )
-                os.remove(tmp_gexf.name)
-            except Exception as e:
-                st.error(f"⚠️ Error exporting GEXF: {e}")
+        # **Adjacency Matrix Download**
+        st.subheader("Adjacency Matrix")
+        csv_adj = adjacency_matrix.to_csv(index=True)
+        st.download_button(
+            label="⬇️ Download Adjacency Matrix (CSV)",
+            data=csv_adj,
+            file_name="Adjacency_Matrix.csv",
+            mime="text/csv"
+        )
+
+        # **Edgelist Download - CSV**
+        st.subheader("Edgelist (CSV)")
+        csv_edgelist = edgelist.to_csv(index=False)
+        st.download_button(
+            label="⬇️ Download Edgelist (CSV)",
+            data=csv_edgelist,
+            file_name="Edgelist.csv",
+            mime="text/csv"
+        )
+
+        # **Edgelist Download - Excel**
+        excel_edgelist = edgelist.to_excel(index=False, engine='openpyxl')
+        st.download_button(
+            label="⬇️ Download Edgelist (Excel)",
+            data=excel_edgelist,
+            file_name="Edgelist.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+        # **Gephi File Download**
+        st.subheader("Gephi File (GEXF)")
+        with open(gexf_temp.name, 'rb') as f:
+            gephi_data = f.read()
+        st.download_button(
+            label="⬇️ Download Gephi File (GEXF)",
+            data=gephi_data,
+            file_name="Text_Network_Gephi_Results.gexf",
+            mime="application/gexf+xml"
+        )
+        # Clean up temporary Gephi file
+        os.remove(gexf_temp.name)
 
     add_footer()
 
