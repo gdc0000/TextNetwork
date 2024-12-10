@@ -8,6 +8,7 @@ from stop_words import get_stop_words
 import tempfile
 import os
 import numpy as np
+import sys
 
 def add_footer():
     st.markdown("---")
@@ -100,10 +101,23 @@ def generate_network_html(G):
         weight = data.get('weight', 1)
         net.add_edge(word1, word2, value=weight)
     net.force_atlas_2based()
-    # Generate HTML as string
-    return net.to_html(full_html=False)
+    try:
+        # Attempt to use to_html()
+        html_content = net.to_html(full_html=False)
+        return html_content
+    except AttributeError:
+        # Fallback method using generate_html (if available)
+        st.error("PyVis 'to_html' method is not available. Please ensure you have pyvis version 0.6.1 or higher.")
+        return ""
 
 def main():
+    # Optional: Display PyVis version for debugging
+    try:
+        import pyvis
+        st.sidebar.markdown(f"**PyVis Version:** {pyvis.__version__}")
+    except ImportError:
+        st.sidebar.markdown("**PyVis Version:** Not installed")
+    
     st.set_page_config(page_title="📚 Educational Text Network Analysis App", layout="wide")
     st.title("📚 Educational Text Network Analysis App")
 
@@ -227,7 +241,10 @@ def main():
         The interactive network graph below visualizes the relationships between words based on their co-occurrence in the documents. Nodes represent words, and edges represent co-occurrences. Hover over a node to see its centrality metrics.
         """)
         try:
-            st.components.v1.html(network_html, height=600, scrolling=True)
+            if network_html:
+                st.components.v1.html(network_html, height=600, scrolling=True)
+            else:
+                st.error("⚠️ Failed to generate network visualization.")
         except Exception as e:
             st.error(f"⚠️ Error displaying network graph: {e}")
 
