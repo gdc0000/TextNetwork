@@ -4,3 +4,5 @@ scikit-learn
 networkx
 matplotlib
 pyvis
+openpyxl
+xlrd
