@@ -3,7 +3,7 @@ pandas
 scikit-learn
 networkx
 matplotlib
-pyvis==0.3.2
+pyvis==0.6.1
 openpyxl
 xlrd
 stop_words
