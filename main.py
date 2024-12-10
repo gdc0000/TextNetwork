@@ -28,9 +28,15 @@ def load_data(uploaded_file, file_type, header):
             df = pd.read_excel(uploaded_file, header=0 if header else None)
         elif file_type == "TXT":
             # Assuming one document per line
-            df = pd.DataFrame({'text': uploaded_file.read().decode('utf-8').splitlines()})
-            if not header:
-                df.columns = ['text']
+            content = uploaded_file.read().decode('utf-8')
+            if header:
+                # If headers are present, read as DataFrame
+                df = pd.DataFrame([line.split('\t') for line in content.splitlines()])
+                df.columns = df.iloc[0]  # Set first row as header
+                df = df[1:]
+            else:
+                # No headers, assume single column named 'text'
+                df = pd.DataFrame({'text': content.splitlines()})
         else:
             st.error("Unsupported file type.")
             return None
@@ -42,7 +48,10 @@ def load_data(uploaded_file, file_type, header):
 def get_stop_words_list(selected_languages):
     stop_words = set()
     for lang in selected_languages:
-        stop_words.update(get_stop_words(lang))
+        try:
+            stop_words.update(get_stop_words(lang))
+        except Exception as e:
+            st.warning(f"Could not load stop words for language '{lang}': {e}")
     return list(stop_words)
 
 def create_cooccurrence_matrix(documents, min_df, max_df, stop_words):
@@ -91,10 +100,8 @@ def generate_network_html(G):
         weight = data.get('weight', 1)
         net.add_edge(word1, word2, value=weight)
     net.force_atlas_2based()
-    # Save to a temporary file
-    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
-        net.show(tmp_file.name)
-        return tmp_file.name
+    # Generate HTML as string
+    return net.to_html(full_html=False)
 
 def main():
     st.set_page_config(page_title="📚 Educational Text Network Analysis App", layout="wide")
@@ -120,11 +127,12 @@ def main():
                     st.stop()
                 else:
                     # If no headers, assume the first column is text
-                    df.columns = ['text']
+                    if file_type != "TXT":
+                        df.columns = ['text']
             documents = df['text'].astype(str).tolist()
-            st.success("File successfully uploaded and loaded.")
+            st.success("✅ File successfully uploaded and loaded.")
     else:
-        st.info("Awaiting file upload.")
+        st.info("📄 Awaiting file upload.")
         st.stop()
 
     st.sidebar.header("🔧 Configuration Settings")
@@ -139,7 +147,7 @@ def main():
     )
 
     max_df = st.sidebar.slider(
-        "Maximum Document Frequency (max_df)",
+        "Maximum Document Frequency (max_df) (%)",
         min_value=50,
         max_value=100,
         value=100,
@@ -166,15 +174,15 @@ def main():
     )
 
     if not languages:
-        st.sidebar.warning("At least one language should be selected for stop words exclusion.")
+        st.sidebar.warning("⚠️ At least one language should be selected for stop words exclusion.")
 
     run_analysis = st.sidebar.button("🔄 Run Analysis")
 
     if run_analysis:
         if not languages:
-            st.error("Please select at least one language for stop words exclusion.")
+            st.error("❌ Please select at least one language for stop words exclusion.")
             st.stop()
-        with st.spinner("Processing..."):
+        with st.spinner("🔍 Processing..."):
             stop_words = get_stop_words_list(languages)
             Adj, words = create_cooccurrence_matrix(documents, min_df, max_df_fraction, stop_words)
 
@@ -197,9 +205,9 @@ def main():
             }).sort_values(by='Degree', ascending=False)
 
             # Generate network HTML
-            network_html_path = generate_network_html(G)
+            network_html = generate_network_html(G)
 
-        st.success("✅ Analysis Complete!")
+        st.success("✅ **Analysis Complete!**")
 
         st.header("🔍 Centrality Metrics")
         st.write("""
@@ -219,11 +227,9 @@ def main():
         The interactive network graph below visualizes the relationships between words based on their co-occurrence in the documents. Nodes represent words, and edges represent co-occurrences. Hover over a node to see its centrality metrics.
         """)
         try:
-            with open(network_html_path, 'r', encoding='utf-8') as f:
-                network_html = f.read()
             st.components.v1.html(network_html, height=600, scrolling=True)
         except Exception as e:
-            st.error(f"Error displaying network graph: {e}")
+            st.error(f"⚠️ Error displaying network graph: {e}")
 
         st.header("📂 Export Graph")
         st.write("You can export the network graph in GEXF format for further analysis in tools like Gephi.")
@@ -242,11 +248,7 @@ def main():
                     )
                 os.remove(tmp_gexf.name)
             except Exception as e:
-                st.error(f"Error exporting GEXF: {e}")
-
-        # Clean up the temporary network HTML file
-        if os.path.exists(network_html_path):
-            os.remove(network_html_path)
+                st.error(f"⚠️ Error exporting GEXF: {e}")
 
     add_footer()
 
