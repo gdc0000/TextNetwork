@@ -4,6 +4,10 @@ from sklearn.feature_extraction.text import CountVectorizer
 import networkx as nx
 import matplotlib.pyplot as plt
 from pyvis.network import Network
+from stop_words import get_stop_words
+import tempfile
+import os
+import numpy as np
 
 def add_footer():
     st.markdown("---")
@@ -14,36 +18,117 @@ def add_footer():
     [LinkedIn](https://www.linkedin.com/in/gabriele-di-cicco-124067b0/)
     """)
 
+def load_data(uploaded_file, file_type, header):
+    try:
+        if file_type == "CSV":
+            df = pd.read_csv(uploaded_file, header=0 if header else None, sep=None, engine='python')
+        elif file_type == "TSV":
+            df = pd.read_csv(uploaded_file, header=0 if header else None, sep='\t')
+        elif file_type == "XLSX":
+            df = pd.read_excel(uploaded_file, header=0 if header else None)
+        elif file_type == "TXT":
+            # Assuming one document per line
+            df = pd.DataFrame({'text': uploaded_file.read().decode('utf-8').splitlines()})
+            if not header:
+                df.columns = ['text']
+        else:
+            st.error("Unsupported file type.")
+            return None
+        return df
+    except Exception as e:
+        st.error(f"Error loading file: {e}")
+        return None
+
+def get_stop_words_list(selected_languages):
+    stop_words = set()
+    for lang in selected_languages:
+        stop_words.update(get_stop_words(lang))
+    return list(stop_words)
+
+def create_cooccurrence_matrix(documents, min_df, max_df, stop_words):
+    cv = CountVectorizer(min_df=min_df, max_df=max_df, stop_words=stop_words)
+    X = cv.fit_transform(documents)
+    words = cv.get_feature_names_out()
+    Adj = pd.DataFrame((X.T * X).toarray(), columns=words, index=words)
+    np.fill_diagonal(Adj.values, 0)  # Remove self-loops
+    return Adj, words
+
+def build_graph(Adj):
+    G = nx.from_pandas_adjacency(Adj)
+    return G
+
+def compute_centrality_measures(G):
+    degree_dict = dict(G.degree(G.nodes()))
+    try:
+        eigenvector_dict = nx.eigenvector_centrality(G, max_iter=1000)
+    except nx.PowerIterationFailedConvergence:
+        st.warning("Eigenvector centrality did not converge. Setting all eigenvector centrality values to 0.")
+        eigenvector_dict = {node: 0 for node in G.nodes()}
+    closeness_dict = nx.closeness_centrality(G)
+    betweenness_dict = nx.betweenness_centrality(G)
+    return degree_dict, eigenvector_dict, closeness_dict, betweenness_dict
+
+def assign_attributes(G, degree, betweenness, eigenvector, closeness):
+    nx.set_node_attributes(G, degree, 'degree')
+    nx.set_node_attributes(G, betweenness, 'betweenness')
+    nx.set_node_attributes(G, eigenvector, 'eigenvector')
+    nx.set_node_attributes(G, closeness, 'closeness')
+
+def generate_network_html(G):
+    net = Network(height='600px', width='100%', notebook=False, directed=False)
+    # Add nodes with centrality attributes
+    for node, data in G.nodes(data=True):
+        size = data.get('degree', 1) * 2  # Adjust size based on degree
+        title = (f"Word: {node}<br>"
+                 f"Degree: {data.get('degree', 0)}<br>"
+                 f"Betweenness: {data.get('betweenness', 0):.4f}<br>"
+                 f"Eigenvector: {data.get('eigenvector', 0):.4f}<br>"
+                 f"Closeness: {data.get('closeness', 0):.4f}")
+        net.add_node(node, label=node, size=size, title=title)
+    # Add edges
+    for edge in G.edges(data=True):
+        word1, word2, data = edge
+        weight = data.get('weight', 1)
+        net.add_edge(word1, word2, value=weight)
+    net.force_atlas_2based()
+    # Save to a temporary file
+    with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as tmp_file:
+        net.show(tmp_file.name)
+        return tmp_file.name
+
 def main():
-    st.set_page_config(page_title="Text Network Analysis", layout="wide")
+    st.set_page_config(page_title="📚 Educational Text Network Analysis App", layout="wide")
     st.title("📚 Educational Text Network Analysis App")
 
-    st.sidebar.header("Configuration Settings")
-
-    # File upload
-    uploaded_file = st.sidebar.file_uploader("Upload a CSV file containing a 'text' column", type=["csv"])
-    
-    if uploaded_file is not None:
-        try:
-            data = pd.read_csv(uploaded_file)
-            if 'text' not in data.columns:
-                st.error("The uploaded CSV must contain a 'text' column.")
-                return
-            documents = data['text'].astype(str).tolist()
-            st.success("File successfully uploaded and loaded.")
-        except Exception as e:
-            st.error(f"Error loading file: {e}")
-            return
-    else:
-        st.info("Awaiting CSV file upload.")
-        st.stop()
-
     st.markdown("""
-    ### **How It Works**
-    This application analyzes the co-occurrence of words in your text data and visualizes the relationships as a network graph. You can customize various parameters to explore different aspects of your data.
+    ### **Overview**
+    This application analyzes the co-occurrence of words in your text data and visualizes the relationships as a network graph. It provides various centrality metrics to help identify the most important or influential words based on different criteria. Customize the analysis by adjusting parameters and excluding stop words in multiple languages.
     """)
 
-    # Configuration parameters
+    st.sidebar.header("📁 Upload Data")
+    file_type = st.sidebar.selectbox("Select File Type", ["CSV", "TSV", "XLSX", "TXT"])
+    uploaded_file = st.sidebar.file_uploader("Upload your file", type=["csv", "tsv", "xlsx", "txt"])
+    header = st.sidebar.checkbox("Label in the first row?", value=True, help="Check if your file contains headers in the first row.")
+
+    if uploaded_file is not None:
+        df = load_data(uploaded_file, file_type, header)
+        if df is not None:
+            if 'text' not in df.columns:
+                if header:
+                    # If headers are present but 'text' column is missing, prompt user
+                    st.error("The uploaded file does not contain a 'text' column.")
+                    st.stop()
+                else:
+                    # If no headers, assume the first column is text
+                    df.columns = ['text']
+            documents = df['text'].astype(str).tolist()
+            st.success("File successfully uploaded and loaded.")
+    else:
+        st.info("Awaiting file upload.")
+        st.stop()
+
+    st.sidebar.header("🔧 Configuration Settings")
+
     min_df = st.sidebar.slider(
         "Minimum Document Frequency (min_df)",
         min_value=1,
@@ -55,12 +140,13 @@ def main():
 
     max_df = st.sidebar.slider(
         "Maximum Document Frequency (max_df)",
-        min_value=0.5,
-        max_value=1.0,
-        value=1.0,
-        step=0.05,
-        help="Ignore terms that appear in more than the specified proportion of documents."
+        min_value=50,
+        max_value=100,
+        value=100,
+        step=5,
+        help="Ignore terms that appear in more than the specified percentage of documents."
     )
+    max_df_fraction = max_df / 100  # Convert to fraction
 
     top_n = st.sidebar.number_input(
         "Top N Words to Display",
@@ -71,44 +157,37 @@ def main():
         help="Number of top words to include based on frequency."
     )
 
-    # Button to trigger analysis
-    if st.sidebar.button("Run Analysis"):
+    st.sidebar.header("🛑 Stop Words Exclusion")
+    languages = st.sidebar.multiselect(
+        "Select Languages for Stop Words Exclusion",
+        options=["english", "french", "spanish", "italian"],
+        default=["english"],
+        help="Select the languages for which you want to exclude stop words."
+    )
+
+    if not languages:
+        st.sidebar.warning("At least one language should be selected for stop words exclusion.")
+
+    run_analysis = st.sidebar.button("🔄 Run Analysis")
+
+    if run_analysis:
+        if not languages:
+            st.error("Please select at least one language for stop words exclusion.")
+            st.stop()
         with st.spinner("Processing..."):
-            # 1. Create Bag-of-Words Representation
-            cv = CountVectorizer(min_df=min_df, max_df=max_df)
-            X = cv.fit_transform(documents)
-            words = cv.get_feature_names_out()
+            stop_words = get_stop_words_list(languages)
+            Adj, words = create_cooccurrence_matrix(documents, min_df, max_df_fraction, stop_words)
 
             # Optionally limit to top N words
-            word_counts = X.sum(axis=0).A1
-            word_freq = pd.DataFrame({'word': words, 'count': word_counts})
-            word_freq = word_freq.sort_values(by='count', ascending=False).head(top_n)
-            selected_words = word_freq['word'].tolist()
+            word_counts = Adj.sum(axis=1).sort_values(ascending=False)
+            selected_words = word_counts.head(top_n).index.tolist()
+            Adj = Adj.loc[selected_words, selected_words]
+            words = selected_words
 
-            cv = CountVectorizer(vocabulary=selected_words, min_df=min_df, max_df=max_df)
-            X = cv.fit_transform(documents)
-            words = cv.get_feature_names_out()
+            G = build_graph(Adj)
+            degree_dict, eigenvector_dict, closeness_dict, betweenness_dict = compute_centrality_measures(G)
+            assign_attributes(G, degree_dict, betweenness_dict, eigenvector_dict, closeness_dict)
 
-            # 2. Construct Adjacency Matrix
-            Adj = pd.DataFrame((X.T * X).toarray(), columns=words, index=words)
-            Adj.values[[np.diag_indices_from(Adj)]] = 0  # Remove self-loops
-
-            # 3. Build Graph
-            G = nx.from_pandas_adjacency(Adj)
-
-            # 4. Compute Centrality Metrics
-            degree_dict = dict(G.degree(G.nodes()))
-            eigenvector_dict = nx.eigenvector_centrality(G, max_iter=1000)
-            closeness_dict = nx.closeness_centrality(G)
-            betweenness_dict = nx.betweenness_centrality(G)
-
-            # 5. Assign Attributes to Nodes
-            nx.set_node_attributes(G, degree_dict, 'degree')
-            nx.set_node_attributes(G, betweenness_dict, 'betweenness')
-            nx.set_node_attributes(G, eigenvector_dict, 'eigenvector')
-            nx.set_node_attributes(G, closeness_dict, 'closeness')
-
-            # 6. Prepare Data for Display
             centrality_df = pd.DataFrame({
                 'Word': list(G.nodes()),
                 'Degree': list(degree_dict.values()),
@@ -117,7 +196,10 @@ def main():
                 'Closeness': list(closeness_dict.values())
             }).sort_values(by='Degree', ascending=False)
 
-        st.success("Analysis Complete!")
+            # Generate network HTML
+            network_html_path = generate_network_html(G)
+
+        st.success("✅ Analysis Complete!")
 
         st.header("🔍 Centrality Metrics")
         st.write("""
@@ -126,49 +208,47 @@ def main():
         st.dataframe(centrality_df)
 
         st.header("📈 Word Frequency")
+        word_freq = pd.DataFrame({
+            'word': list(word_counts.head(top_n).index),
+            'count': list(word_counts.head(top_n).values)
+        })
         st.bar_chart(word_freq.set_index('word')['count'])
 
         st.header("🕸️ Word Co-occurrence Network")
-
-        # Visualize using PyVis
-        net = Network(height='600px', width='100%', notebook=False, directed=False)
-
-        # Add nodes with centrality attributes
-        for node in G.nodes(data=True):
-            word = node[0]
-            size = node[1]['degree'] * 2  # Adjust size based on degree
-            title = (f"Word: {word}<br>"
-                     f"Degree: {node[1]['degree']}<br>"
-                     f"Betweenness: {node[1]['betweenness']:.4f}<br>"
-                     f"Eigenvector: {node[1]['eigenvector']:.4f}<br>"
-                     f"Closeness: {node[1]['closeness']:.4f}")
-            net.add_node(word, label=word, size=size, title=title)
-
-        # Add edges
-        for edge in G.edges(data=True):
-            word1, word2, data = edge
-            weight = data.get('weight', 1)
-            net.add_edge(word1, word2, value=weight)
-
-        # Generate and display the network
-        net.force_atlas_2based()
-        net.show("network.html")
-        st.components.v1.html(open("network.html", 'r', encoding='utf-8').read(), height=600, scrolling=True)
+        st.write("""
+        The interactive network graph below visualizes the relationships between words based on their co-occurrence in the documents. Nodes represent words, and edges represent co-occurrences. Hover over a node to see its centrality metrics.
+        """)
+        try:
+            with open(network_html_path, 'r', encoding='utf-8') as f:
+                network_html = f.read()
+            st.components.v1.html(network_html, height=600, scrolling=True)
+        except Exception as e:
+            st.error(f"Error displaying network graph: {e}")
 
         st.header("📂 Export Graph")
         st.write("You can export the network graph in GEXF format for further analysis in tools like Gephi.")
-        if st.button("Download GEXF"):
-            gexf_data = nx.generate_gexf(G)
-            gexf_str = ''.join(gexf_data)
-            st.download_button(
-                label="Download GEXF",
-                data=gexf_str,
-                file_name="Text_Network_Gephi_Results.gexf",
-                mime="application/gexf+xml"
-            )
+        if st.button("⬇️ Download GEXF"):
+            try:
+                with tempfile.NamedTemporaryFile(delete=False, suffix='.gexf') as tmp_gexf:
+                    nx.write_gexf(G, tmp_gexf.name)
+                    tmp_gexf.close()
+                    with open(tmp_gexf.name, 'rb') as f:
+                        gexf_data = f.read()
+                    st.download_button(
+                        label="Download GEXF",
+                        data=gexf_data,
+                        file_name="Text_Network_Gephi_Results.gexf",
+                        mime="application/gexf+xml"
+                    )
+                os.remove(tmp_gexf.name)
+            except Exception as e:
+                st.error(f"Error exporting GEXF: {e}")
+
+        # Clean up the temporary network HTML file
+        if os.path.exists(network_html_path):
+            os.remove(network_html_path)
 
     add_footer()
 
 if __name__ == "__main__":
-    import numpy as np
     main()
