@@ -103,9 +103,10 @@ if uploaded_file is not None:
     csv_data = csv_buffer.getvalue()
 
     # Output B: Gephi GEXF file
+    # Use a StringIO buffer and force unicode encoding so that XML is written as text.
     gexf_buffer = io.StringIO()
-    nx.write_gexf(G, gexf_buffer)
-    gexf_data = gexf_buffer.getvalue().encode("utf-8")  # convert to bytes for download
+    nx.write_gexf(G, gexf_buffer, encoding="unicode")
+    gexf_data = gexf_buffer.getvalue()  # This is now a string
 
     # --- Topic Modeling ---
     st.subheader("Topic Modeling with NMF")
@@ -166,3 +167,18 @@ if uploaded_file is not None:
         file_name="NMF_Results.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
+
+# --- Footer ---
+def add_footer():
+    """
+    Adds a footer with personal information and social links.
+    """
+    st.markdown("---")
+    st.markdown("### **Gabriele Di Cicco, PhD in Social Psychology**")
+    st.markdown("""
+    [GitHub](https://github.com/gdc0000) | 
+    [ORCID](https://orcid.org/0000-0002-1439-5790) | 
+    [LinkedIn](https://www.linkedin.com/in/gabriele-di-cicco-124067b0/)
+    """)
+
+add_footer()
