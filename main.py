@@ -13,9 +13,13 @@ import plotly.graph_objects as go
 # ------------------------------
 
 def extract_hashtags(text):
-    """Extracts hashtags from a text string using regex."""
+    """Extracts hashtags from a text string using regex.
+    
+    Converts the input to a string to handle non-string values.
+    """
     if pd.isnull(text):
         return []
+    text = str(text)  # Convert non-string values to string
     return re.findall(r'#\w+', text)
 
 def add_footer():
@@ -135,7 +139,7 @@ def main():
     if st.session_state.step >= 6:
         st.header("Step 6: Network Summary & Download Options")
         G = st.session_state.G
-        # Instead of nx.info(G), show a manual summary:
+        # Manually show graph info instead of nx.info(G)
         st.write(f"**Number of nodes:** {G.number_of_nodes()}")
         st.write(f"**Number of edges:** {G.number_of_edges()}")
         # Prepare download for Gephi (GEXF format)
@@ -182,7 +186,7 @@ def main():
             if st.session_state.num_hashtags > 1:
                 st.session_state.num_hashtags -= 1
 
-        # Calculate term frequencies from the CountVectorizer matrix.
+        # Calculate term frequencies from the CountVectorizer output.
         X = st.session_state.X
         hashtag_labels = st.session_state.hashtag_labels
         term_frequencies = np.array(X.sum(axis=0)).flatten()
