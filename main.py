@@ -22,6 +22,27 @@ def extract_hashtags(text):
     text = str(text)  # Convert non-string values to string
     return re.findall(r'#\w+', text)
 
+def sanitize_graph(G):
+    """Converts node and edge attributes to native Python types.
+    
+    In particular, converts any bytes values to strings and numpy scalars
+    to Python scalars. This prevents errors during XML serialization.
+    """
+    # Sanitize node attributes
+    for n, attr in G.nodes(data=True):
+        for key, value in attr.items():
+            if isinstance(value, bytes):
+                G.nodes[n][key] = value.decode('utf-8')
+            elif isinstance(value, (np.int64, np.float64)):
+                G.nodes[n][key] = value.item()
+    # Sanitize edge attributes
+    for u, v, data in G.edges(data=True):
+        for key, value in data.items():
+            if isinstance(value, bytes):
+                data[key] = value.decode('utf-8')
+            elif isinstance(value, (np.int64, np.float64)):
+                data[key] = value.item()
+
 def add_footer():
     """
     Adds a footer with personal information and social links.
@@ -139,9 +160,11 @@ def main():
     if st.session_state.step >= 6:
         st.header("Step 6: Network Summary & Download Options")
         G = st.session_state.G
-        # Manually show graph info instead of nx.info(G)
+        # Manually show graph info instead of using nx.info(G)
         st.write(f"**Number of nodes:** {G.number_of_nodes()}")
         st.write(f"**Number of edges:** {G.number_of_edges()}")
+        # Sanitize graph attributes to avoid bytes issues
+        sanitize_graph(G)
         # Prepare download for Gephi (GEXF format)
         gexf_buffer = io.StringIO()
         nx.write_gexf(G, gexf_buffer)
