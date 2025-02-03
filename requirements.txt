@@ -1,9 +1,6 @@
 streamlit
 pandas
+numpy
 scikit-learn
 networkx
-matplotlib
-pyvis
-openpyxl
-xlrd
-stop_words
+plotly
