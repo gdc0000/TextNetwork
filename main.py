@@ -1,268 +1,168 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import re
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.decomposition import NMF
 import networkx as nx
+import re
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sklearn.decomposition import NMF
 import io
-import plotly.graph_objects as go
 
-# ------------------------------
-# Helper Functions
-# ------------------------------
-
-def extract_hashtags(text):
-    """Extracts hashtags from a text string using regex.
+st.title("Text Network Analysis and Topic Modeling")
+st.markdown(
+    """
+    This app lets you upload an Excel or CSV file containing text data.
+    It extracts hashtags from the specified text column, builds a text network,
+    computes centrality measures, and performs topic modeling via NMF.
     
-    Converts the input to a string to handle non-string values.
+    You can then download:
+    - An **Edge List CSV** file,
+    - A **Gephi GEXF** file, and
+    - An **Excel** file with topic modeling results.
     """
-    if pd.isnull(text):
-        return []
-    text = str(text)  # Convert non-string values to string
-    return re.findall(r'#\w+', text)
+)
 
-def sanitize_graph(G):
-    """Converts node and edge attributes to native Python types.
-    
-    In particular, converts any bytes values to strings and numpy scalars
-    to Python scalars. This prevents errors during XML serialization.
-    """
-    # Sanitize node attributes
-    for n, attr in G.nodes(data=True):
-        for key, value in attr.items():
-            if isinstance(value, bytes):
-                G.nodes[n][key] = value.decode('utf-8')
-            elif isinstance(value, (np.int64, np.float64)):
-                G.nodes[n][key] = value.item()
-    # Sanitize edge attributes
-    for u, v, data in G.edges(data=True):
-        for key, value in data.items():
-            if isinstance(value, bytes):
-                data[key] = value.decode('utf-8')
-            elif isinstance(value, (np.int64, np.float64)):
-                data[key] = value.item()
+# File uploader for Excel or CSV
+uploaded_file = st.file_uploader("Upload your Excel or CSV file", type=["xlsx", "csv"])
+# User input for which column contains the text to analyze
+text_column = st.text_input("Enter the column name containing text", value="text")
 
-def add_footer():
-    """
-    Adds a footer with personal information and social links.
-    """
-    st.markdown("---")
-    st.markdown("### **Gabriele Di Cicco, PhD in Social Psychology**")
-    st.markdown("""
-    [GitHub](https://github.com/gdc0000) | 
-    [ORCID](https://orcid.org/0000-0002-1439-5790) | 
-    [LinkedIn](https://www.linkedin.com/in/gabriele-di-cicco-124067b0/)
-    """)
-
-# ------------------------------
-# Main App
-# ------------------------------
-
-def main():
-    st.title("Hashtag Co-occurrence Network & Topic Modeling Analysis")
-
-    # Initialize a step counter in session_state.
-    if "step" not in st.session_state:
-        st.session_state.step = 1
-
-    # ---------- Step 1: File Upload ----------
-    if st.session_state.step == 1:
-        st.header("Step 1: Upload File")
-        uploaded_file = st.file_uploader("Upload a CSV or Excel file", type=["csv", "xlsx", "xls"])
-        if uploaded_file is not None:
-            if uploaded_file.name.endswith('.csv'):
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file)
-            st.session_state.df = df
-            st.write("### Data Preview")
-            st.write(df.head())
-            if st.button("Next: Select Column"):
-                st.session_state.step = 2
-
-    # ---------- Step 2: Select Column ----------
-    if st.session_state.step >= 2:
-        st.header("Step 2: Select Text Column")
-        df = st.session_state.df
-        text_column = st.selectbox("Select the textual column to analyze for hashtags", df.columns)
-        st.session_state.text_column = text_column
-        if st.button("Next: Extract Hashtags"):
-            st.session_state.step = 3
-
-    # ---------- Step 3: Extract Hashtags ----------
-    if st.session_state.step >= 3:
-        st.header("Step 3: Extract Hashtags")
-        df = st.session_state.df
-        text_column = st.session_state.text_column
-        df['hashtags'] = df[text_column].apply(extract_hashtags)
-        st.write("### Data with Extracted Hashtags")
-        st.write(df.head())
-        # Create a string version of the hashtags for vectorization.
-        df['hashtags_str'] = df['hashtags'].apply(lambda x: " ".join(x))
-        st.session_state.df = df  # update dataframe in session_state
-        if st.button("Next: Configure CountVectorizer"):
-            st.session_state.step = 4
-
-    # ---------- Step 4: CountVectorizer & Co-occurrence Matrix ----------
-    if st.session_state.step >= 4:
-        st.header("Step 4: Configure CountVectorizer & Compute Co-occurrence Matrix")
-        st.sidebar.header("CountVectorizer Options")
-        token_pattern = st.sidebar.text_input("Token Pattern", value=r'#\w+')
-        min_df = st.sidebar.number_input("Min Document Frequency", min_value=1, value=1, step=1)
-        max_df = st.sidebar.slider("Max Document Frequency (proportion)", min_value=0.0, max_value=1.0, value=1.0, step=0.05)
-        ngram_min = st.sidebar.number_input("N-gram Range (min)", min_value=1, value=1, step=1)
-        ngram_max = st.sidebar.number_input("N-gram Range (max)", min_value=ngram_min, value=ngram_min, step=1)
-
-        if st.button("Next: Compute Co-occurrence"):
-            vectorizer = CountVectorizer(token_pattern=token_pattern,
-                                         min_df=min_df,
-                                         max_df=max_df,
-                                         ngram_range=(ngram_min, ngram_max))
-            X = vectorizer.fit_transform(st.session_state.df['hashtags_str'])
-            st.session_state.vectorizer = vectorizer
-            st.session_state.X = X
-            hashtag_labels = vectorizer.get_feature_names_out()
-            st.session_state.hashtag_labels = hashtag_labels
-            # Compute co-occurrence matrix: X.T * X (diagonals are term frequencies)
-            cooccurrence_matrix = (X.T * X).toarray()
-            st.session_state.cooccurrence_matrix = cooccurrence_matrix
-            cooccurrence_df = pd.DataFrame(cooccurrence_matrix, index=hashtag_labels, columns=hashtag_labels)
-            st.write("### Hashtag Co-occurrence Matrix")
-            st.write(cooccurrence_df)
-            st.session_state.step = 5
-
-    # ---------- Step 5: Build Network Graph ----------
-    if st.session_state.step >= 5:
-        st.header("Step 5: Build Network Graph")
-        cooccurrence_matrix = st.session_state.cooccurrence_matrix
-        hashtag_labels = st.session_state.hashtag_labels
-        # Build graph from co-occurrence matrix (ignoring self-loops)
-        G = nx.Graph()
-        for i in range(len(hashtag_labels)):
-            for j in range(i + 1, len(hashtag_labels)):
-                weight = cooccurrence_matrix[i][j]
-                if weight > 0:
-                    G.add_edge(hashtag_labels[i], hashtag_labels[j], weight=weight)
-        # Compute centrality measures
-        degree_centrality = nx.degree_centrality(G)
-        closeness_centrality = nx.closeness_centrality(G)
-        betweenness_centrality = nx.betweenness_centrality(G)
-        for node in G.nodes():
-            G.nodes[node]['degree_centrality'] = degree_centrality.get(node, 0)
-            G.nodes[node]['closeness_centrality'] = closeness_centrality.get(node, 0)
-            G.nodes[node]['betweenness_centrality'] = betweenness_centrality.get(node, 0)
-        st.session_state.G = G
-        if st.button("Next: Network Downloads & Frequency Chart"):
-            st.session_state.step = 6
-
-    # ---------- Step 6: Network Summary & Downloads ----------
-    if st.session_state.step >= 6:
-        st.header("Step 6: Network Summary & Download Options")
-        G = st.session_state.G
-        # Manually show graph info instead of using nx.info(G)
-        st.write(f"**Number of nodes:** {G.number_of_nodes()}")
-        st.write(f"**Number of edges:** {G.number_of_edges()}")
-        # Sanitize graph attributes to avoid bytes issues
-        sanitize_graph(G)
-        # Prepare download for Gephi (GEXF format)
-        gexf_buffer = io.StringIO()
-        nx.write_gexf(G, gexf_buffer)
-        gexf_data = gexf_buffer.getvalue().encode('utf-8')
-        st.download_button(
-            label="Download Gephi File (GEXF)",
-            data=gexf_data,
-            file_name="network.gexf",
-            mime="text/xml"
-        )
-        # Prepare download for edge list CSV.
-        edge_data = []
-        for u, v, data in G.edges(data=True):
-            edge_data.append({
-                "source": u,
-                "target": v,
-                "weight": data.get("weight", 1)
-            })
-        edge_df = pd.DataFrame(edge_data)
-        csv_buffer = io.StringIO()
-        edge_df.to_csv(csv_buffer, index=False)
-        csv_data = csv_buffer.getvalue().encode('utf-8')
-        st.download_button(
-            label="Download Edge List CSV",
-            data=csv_data,
-            file_name="edge_list.csv",
-            mime="text/csv"
-        )
-        if st.button("Next: Frequency Bar Chart"):
-            st.session_state.step = 7
-
-    # ---------- Step 7: Frequency Bar Chart ----------
-    if st.session_state.step >= 7:
-        st.header("Step 7: Interactive Frequency Bar Chart")
-        # Use session_state to track number of hashtags to display.
-        if "num_hashtags" not in st.session_state:
-            st.session_state.num_hashtags = 10
-        col_freq = st.columns(2)
-        if col_freq[0].button("+ Hashtags", key="freq_plus"):
-            st.session_state.num_hashtags += 1
-        if col_freq[1].button("- Hashtags", key="freq_minus"):
-            if st.session_state.num_hashtags > 1:
-                st.session_state.num_hashtags -= 1
-
-        # Calculate term frequencies from the CountVectorizer output.
-        X = st.session_state.X
-        hashtag_labels = st.session_state.hashtag_labels
-        term_frequencies = np.array(X.sum(axis=0)).flatten()
-        freq_df = pd.DataFrame({
-            "hashtag": hashtag_labels,
-            "frequency": term_frequencies
-        }).sort_values(by="frequency", ascending=False)
-        top_freq_df = freq_df.head(st.session_state.num_hashtags)
-        fig_freq = go.Figure(data=go.Bar(x=top_freq_df["hashtag"], y=top_freq_df["frequency"]))
-        fig_freq.update_layout(title="Top Frequent Hashtags", xaxis_title="Hashtag", yaxis_title="Frequency")
-        st.plotly_chart(fig_freq)
-        if st.button("Next: Optional Topic Modeling"):
-            st.session_state.step = 8
-
-    # ---------- Step 8: Optional NNMF Topic Modeling ----------
-    if st.session_state.step >= 8:
-        st.header("Step 8: NNMF Topic Modeling (Optional)")
-        perform_topic_modeling = st.sidebar.checkbox("Perform NNMF Topic Modeling", value=False)
-        if perform_topic_modeling:
-            n_topics = st.sidebar.number_input("Number of Topics", min_value=1, value=3, step=1)
-            if "num_hashtags_topic" not in st.session_state:
-                st.session_state.num_hashtags_topic = 10
-            col_topic = st.columns(2)
-            if col_topic[0].button("+ Hashtags per Topic", key="topic_plus"):
-                st.session_state.num_hashtags_topic += 1
-            if col_topic[1].button("- Hashtags per Topic", key="topic_minus"):
-                if st.session_state.num_hashtags_topic > 1:
-                    st.session_state.num_hashtags_topic -= 1
-
-            # Run NNMF on the CountVectorizer matrix.
-            X = st.session_state.X
-            nmf_model = NMF(n_components=n_topics, init='nndsvd', random_state=42)
-            W = nmf_model.fit_transform(X)
-            H = nmf_model.components_
-            feature_names = st.session_state.hashtag_labels
-
-            st.write("#### NNMF Topic Modeling Results")
-            for topic_idx, topic in enumerate(H):
-                top_indices = topic.argsort()[::-1][:st.session_state.num_hashtags_topic]
-                top_hashtags = [feature_names[i] for i in top_indices]
-                top_weights = topic[top_indices]
-                fig_topic = go.Figure(data=go.Bar(x=top_hashtags, y=top_weights))
-                fig_topic.update_layout(
-                    title=f"Topic {topic_idx+1}",
-                    xaxis_title="Hashtag",
-                    yaxis_title="Weight"
-                )
-                st.plotly_chart(fig_topic)
+if uploaded_file is not None:
+    try:
+        if uploaded_file.name.endswith("xlsx"):
+            df = pd.read_excel(uploaded_file, engine="openpyxl")
         else:
-            st.write("NNMF Topic Modeling not selected.")
+            df = pd.read_csv(uploaded_file)
+        st.subheader("Data Preview")
+        st.dataframe(df.head())
+    except Exception as e:
+        st.error(f"Error reading file: {e}")
 
-    # ---------- Footer ----------
-    add_footer()
+    # Sidebar parameters for TF-IDF and NMF
+    st.sidebar.header("Tfidf Vectorizer Parameters")
+    ngram_min = st.sidebar.number_input("Min ngram", min_value=1, value=1)
+    ngram_max = st.sidebar.number_input("Max ngram", min_value=1, value=3)
+    max_features = st.sidebar.number_input("Max features", min_value=100, value=1000)
+    min_df = st.sidebar.number_input("Min document frequency", min_value=1, value=5)
+    max_df = st.sidebar.slider("Max document frequency ratio", 0.0, 1.0, 0.9)
 
-if __name__ == "__main__":
-    main()
+    st.sidebar.header("NMF Parameters")
+    n_topics = st.sidebar.number_input("Number of topics", min_value=2, value=10)
+    max_iter = st.sidebar.number_input("Max iterations", min_value=100, value=1000)
+    alpha_H = st.sidebar.number_input("Alpha_H", min_value=0.0, value=0.1, format="%.2f")
+    l1_ratio = st.sidebar.number_input("L1 ratio", min_value=0.0, max_value=1.0, value=0.5, format="%.2f")
+
+    # --- Text Preprocessing & Hashtag Extraction ---
+    def extract_hashtags(text):
+        """Extract hashtags from text and remove the '#' symbol."""
+        if pd.isnull(text):
+            return ""
+        text = str(text)
+        hashtags = re.findall(r'#\w+', text)
+        return " ".join(tag.lstrip("#") for tag in hashtags)
+
+    # Apply the hashtag extraction function
+    documents = df[text_column].apply(extract_hashtags)
+    st.subheader("Extracted Hashtags")
+    st.write(documents.head())
+
+    # --- Text Network Analysis ---
+    # Create a document-term matrix based on hashtags
+    cv = CountVectorizer()
+    X = cv.fit_transform(documents)
+    words = cv.get_feature_names_out()
+
+    # Build the adjacency (co-occurrence) matrix and graph
+    Adj = pd.DataFrame((X.T * X).toarray(), columns=words, index=words)
+    G = nx.from_pandas_adjacency(Adj)
+
+    # Calculate centrality measures
+    degree_dict = dict(G.degree())
+    try:
+        eigenvector_dict = nx.eigenvector_centrality(G, max_iter=1000)
+    except Exception as e:
+        st.warning("Eigenvector centrality did not converge. Try adjusting parameters.")
+        eigenvector_dict = {node: 0 for node in G.nodes()}
+    closeness_dict = nx.closeness_centrality(G)
+    betweenness_dict = nx.betweenness_centrality(G)
+
+    # Set the calculated measures as node attributes
+    nx.set_node_attributes(G, degree_dict, "degree")
+    nx.set_node_attributes(G, eigenvector_dict, "eigenvector")
+    nx.set_node_attributes(G, closeness_dict, "closeness")
+    nx.set_node_attributes(G, betweenness_dict, "betweenness")
+
+    # Create an edge list (excluding self-loops)
+    edge_list = [(u, v) for u, v in G.edges() if u != v]
+    edge_df = pd.DataFrame(edge_list, columns=["Source", "Target"])
+    st.subheader("Edge List Preview")
+    st.dataframe(edge_df.head())
+
+    # --- Prepare Downloadable Outputs ---
+    # Output A: Edge List CSV
+    csv_buffer = io.StringIO()
+    edge_df.to_csv(csv_buffer, index=False)
+    csv_data = csv_buffer.getvalue()
+
+    # Output B: Gephi GEXF file
+    gexf_buffer = io.StringIO()
+    nx.write_gexf(G, gexf_buffer)
+    gexf_data = gexf_buffer.getvalue().encode("utf-8")  # convert to bytes for download
+
+    # --- Topic Modeling ---
+    st.subheader("Topic Modeling with NMF")
+    tfidf = TfidfVectorizer(
+        ngram_range=(ngram_min, ngram_max),
+        max_features=max_features,
+        min_df=min_df,
+        max_df=max_df,
+    )
+    V = tfidf.fit_transform(documents)
+    words_tfidf = tfidf.get_feature_names_out()
+    st.write("TF-IDF matrix shape:", V.shape)
+
+    nmf_model = NMF(
+        n_components=n_topics,
+        beta_loss="kullback-leibler",
+        solver="mu",
+        max_iter=max_iter,
+        alpha_H=alpha_H,
+        l1_ratio=l1_ratio,
+        random_state=42,
+    )
+    W = nmf_model.fit_transform(V)
+    H = nmf_model.components_
+
+    # Create dataframes for topic modeling results
+    word_topic_df = pd.DataFrame(H.T, index=words_tfidf)
+    document_topic_df = pd.DataFrame(W)
+    document_topic_df["Topic"] = document_topic_df.idxmax(axis=1)
+    sheet_1 = pd.concat([df, document_topic_df], axis=1)
+    sheet_2 = word_topic_df
+
+    # Output C: Excel file with two sheets (documents and words)
+    excel_buffer = io.BytesIO()
+    with pd.ExcelWriter(excel_buffer, engine="xlsxwriter") as writer:
+        sheet_1.to_excel(writer, sheet_name="documents", index=False)
+        sheet_2.to_excel(writer, sheet_name="words")
+    excel_data = excel_buffer.getvalue()
+
+    # --- Download Buttons ---
+    st.download_button(
+        label="Download Edge List CSV",
+        data=csv_data,
+        file_name="Text_Network_Edge_List.csv",
+        mime="text/csv",
+    )
+
+    st.download_button(
+        label="Download Gephi GEXF File",
+        data=gexf_data,
+        file_name="Text_Network_Gephi_Results.gexf",
+        mime="text/xml",
+    )
+
+    st.download_button(
+        label="Download Topic Modeling Excel File",
+        data=excel_data,
+        file_name="NMF_Results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
