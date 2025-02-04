@@ -47,7 +47,7 @@ def extract_hashtags(text) -> str:
     """
     Extracts hashtags from a text string and returns them as a space-separated string.
     
-    Scientific Explanation:
+    Explanation:
     Hashtags often capture key topics and sentiments. By extracting hashtags, we focus on the most
     meaningful words in social media or text data, reducing noise and emphasizing relevant features.
     """
@@ -60,7 +60,7 @@ def preprocess_documents(df: pd.DataFrame, text_column: str) -> pd.Series:
     """
     Applies hashtag extraction to the specified text column.
     
-    Scientific Explanation:
+    Explanation:
     Preprocessing reduces complexity by isolating important keywords. Extracting hashtags
     helps in filtering out less relevant words and prepares the data for further network and topic analyses.
     """
@@ -75,7 +75,7 @@ def build_text_network(documents: pd.Series, cv_params: dict = None) -> nx.Graph
     Builds a text network using CountVectorizer with given parameters, computes the co-occurrence matrix,
     and returns a networkx Graph.
     
-    Scientific Explanation:
+    Explanation:
     CountVectorizer converts text into a document-term matrix. Multiplying the matrix by its transpose
     yields a co-occurrence matrix that indicates how frequently terms appear together. This matrix is
     interpreted as an adjacency matrix, where nodes are terms and edges represent co-occurrence.
@@ -94,7 +94,7 @@ def compute_graph_centralities(G: nx.Graph) -> None:
     """
     Computes and assigns centrality measures (degree, eigenvector, closeness, betweenness) to graph nodes.
     
-    Scientific Explanation:
+    Explanation:
     Centrality measures are critical in network analysis:
     - **Degree Centrality:** Counts direct connections (importance by frequency).
     - **Eigenvector Centrality:** Considers the influence of neighbors.
@@ -119,7 +119,7 @@ def perform_topic_modeling(documents: pd.Series,
     Performs topic modeling using TF-IDF vectorization and NMF.
     Returns document-topic and word-topic dataframes along with raw matrices.
     
-    Scientific Explanation:
+    Explanation:
     - **TF-IDF Vectorization:** Weighs words by their frequency in a document relative to the corpus,
       emphasizing terms that are significant to individual documents.
     - **Non-negative Matrix Factorization (NMF):** Decomposes the TF-IDF matrix into topics (latent features),
@@ -213,7 +213,7 @@ if "word_topic_df" not in st.session_state:
 # ---------------------------
 # Sidebar Configuration with Scientific Explanations
 # ---------------------------
-st.sidebar.header("Configuration Panel & Scientific Explanations")
+st.sidebar.header("Configuration Panel")
 st.sidebar.markdown("""
 This panel allows you to configure the parameters used in the analysis:
 
@@ -278,12 +278,12 @@ nmf_l1_ratio = st.sidebar.number_input("l1_ratio", value=0.5, step=0.1, format="
 # ---------------------------
 # Main App Layout with Explanations and Progress Bars
 # ---------------------------
-st.title("Text Network and Topic Modeling Analysis")
+st.title("Hashtag Network and Topic Modeling Analysis")
 st.markdown("""
 This application performs several analyses on your text data:
 
 1. **Preprocessing:** Extracts hashtags from the specified text column.
-2. **Text Network Analysis:** Builds a network from co-occurrence of terms and computes centrality measures to identify important terms.
+2. **Text Network Analysis:** Builds a network from co-occurrence of terms and computes centrality measures to identify important hashtags.
 3. **Topic Modeling:** Applies TF-IDF and NMF to uncover latent topics within your text.
 
 Each processing step is accompanied by a progress bar and scientific explanation to help you understand the methods used.
