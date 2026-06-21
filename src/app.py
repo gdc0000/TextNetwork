@@ -7,7 +7,7 @@ Run with:
 
 import streamlit as st
 
-from src.data.loader import load_excel_file
+from src.data.loader import load_file
 from src.data.preprocessing import preprocess_documents
 from src.network.analysis import compute_graph_centralities
 from src.network.builder import build_text_network
@@ -26,12 +26,12 @@ def main() -> None:
     # Sidebar
     st.sidebar.header("Configuration Panel")
     st.sidebar.markdown(
-        "Upload an Excel file, specify the text column, and configure "
+        "Upload a data file (Excel, CSV, SPSS), specify the text column, and configure "
         "network / topic modeling parameters below."
     )
 
     uploaded_file = st.sidebar.file_uploader(
-        "Upload an Excel file", type=["xlsx", "xls"]
+        "Upload a data file", type=["xlsx", "xls", "csv", "sav"]
     )
     text_column = st.sidebar.text_input("Text column name", value="text")
 
@@ -75,12 +75,12 @@ def main() -> None:
     # Step 1: Upload
     st.header("1. Data Upload")
     if uploaded_file is not None:
-        st.session_state.df = load_excel_file(uploaded_file)
+        st.session_state.df = load_file(uploaded_file)
         if st.session_state.df is not None:
             st.subheader("Data Preview")
             st.dataframe(st.session_state.df.head())
     else:
-        st.info("Please upload an Excel file from the sidebar.")
+        st.info("Please upload a data file from the sidebar.")
 
     # Step 2: Preprocessing
     st.header("2. Preprocessing (Hashtag Extraction)")

@@ -2,7 +2,9 @@
 
 [![CI](https://github.com/gdc0000/TextNetwork/actions/workflows/ci.yml/badge.svg)](https://github.com/gdc0000/TextNetwork/actions/workflows/ci.yml)
 
-A Streamlit application for text network analysis and topic modeling from Excel data.
+A Streamlit application for text network analysis and topic modeling from Excel, CSV, and SPSS data.
+
+[![Streamlit App](https://img.shields.io/badge/streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://text-network.streamlit.app/)
 
 ## Quick Start
 
