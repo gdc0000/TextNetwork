@@ -1,8 +1,13 @@
 {
-    "name": "Python Development",
-    "image": "mcr.microsoft.com/vscode/devcontainers/python:3.10",
+    "name": "TextNetwork Dev",
+    "image": "mcr.microsoft.com/vscode/devcontainers/python:3.11",
     "features": {
         "python": "latest"
     },
-    "postCreateCommand": "pip install -r requirements.txt"
+    "postCreateCommand": "pip install -r requirements-dev.txt",
+    "extensions": [
+        "ms-python.python",
+        "ms-python.mypy",
+        "charliermarsh.ruff"
+    ]
 }
