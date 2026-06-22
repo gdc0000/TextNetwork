@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Callable, Optional
 
 import pandas as pd
@@ -13,14 +14,22 @@ def _read_excel(file: BytesIO) -> pd.DataFrame:
 
 
 def _read_sav(file: BytesIO) -> pd.DataFrame:
+    tmp_path: Optional[str] = None
     try:
-        return pd.read_spss(file)
+        file.seek(0)
+        with NamedTemporaryFile(suffix=".sav", delete=False) as tmp:
+            tmp.write(file.read())
+            tmp_path = tmp.name
+        return pd.read_spss(tmp_path)
     except ImportError:
         st.error(
             "Reading SPSS (.sav) files requires the 'pyreadstat' package. "
             "Install it with: pip install pyreadstat"
         )
         raise
+    finally:
+        if tmp_path is not None:
+            Path(tmp_path).unlink(missing_ok=True)
 
 
 _READERS: dict[str, Callable[[BytesIO], pd.DataFrame]] = {
