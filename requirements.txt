@@ -6,4 +6,4 @@ networkx>=3.0,<4
 openpyxl>=3.1,<4
 xlsxwriter==3.2.9
 plotly>=5.17,<6
-pyreadstat>=1.2,<2
+# pyreadstat>=1.2  # optional — required only for SPSS (.sav) files
